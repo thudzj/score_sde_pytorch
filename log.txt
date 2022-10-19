@@ -1,0 +1,10 @@
+first download ckpts to exp folder following Yang' guide;
+then download data stats to assets/stats (see https://drive.google.com/file/d/14UB27-Spi8VjZYKST3ZcT8YVhAluiFWI/view?usp=sharing)
+
+CUDA_VISIBLE_DEVICES=5 python our_eval.py --method both 
+
+CUDA_VISIBLE_DEVICES=2 python our_eval.py --method sec1.4  
+
+CUDA_VISIBLE_DEVICES=1 python our_eval.py --method sec1.3  
+
+CUDA_VISIBLE_DEVICES=0 python our_eval.py --method original

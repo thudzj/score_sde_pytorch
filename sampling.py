@@ -26,6 +26,7 @@ from models.utils import from_flattened_numpy, to_flattened_numpy, get_score_fn
 from scipy import integrate
 import sde_lib
 from models import utils as mutils
+from wrapper import score_fn_wrapper
 
 _CORRECTORS = {}
 _PREDICTORS = {}
@@ -330,9 +331,12 @@ class NoneCorrector(Corrector):
     return x, x
 
 
-def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, continuous):
+def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, continuous, use_wrapper, calibration, score_mean, timesteps):
   """A wrapper that configures and returns the update function of predictors."""
   score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
+  if use_wrapper:
+    score_fn = score_fn_wrapper(sde, score_fn, continuous, calibration=calibration, score_mean=score_mean, device=timesteps.device)
+    score_fn = functools.partial(score_fn, timesteps=timesteps)
   if predictor is None:
     # Corrector-only sampler
     predictor_obj = NonePredictor(sde, score_fn, probability_flow)
@@ -341,9 +345,12 @@ def shared_predictor_update_fn(x, t, sde, model, predictor, probability_flow, co
   return predictor_obj.update_fn(x, t)
 
 
-def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_steps):
+def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_steps, use_wrapper, calibration, score_mean, timesteps):
   """A wrapper tha configures and returns the update function of correctors."""
   score_fn = mutils.get_score_fn(sde, model, train=False, continuous=continuous)
+  if use_wrapper:
+    score_fn = score_fn_wrapper(sde, score_fn, continuous, calibration=calibration, score_mean=score_mean, device=timesteps.device)
+    score_fn = functools.partial(score_fn, timesteps=timesteps)
   if corrector is None:
     # Predictor-only sampler
     corrector_obj = NoneCorrector(sde, score_fn, snr, n_steps)
@@ -354,7 +361,8 @@ def shared_corrector_update_fn(x, t, sde, model, corrector, continuous, snr, n_s
 
 def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
                    n_steps=1, probability_flow=False, continuous=False,
-                   denoise=True, eps=1e-3, device='cuda'):
+                   denoise=True, eps=1e-3, device='cuda', 
+                   use_wrapper=False, calibration=False, score_mean=None):
   """Create a Predictor-Corrector (PC) sampler.
 
   Args:
@@ -375,17 +383,26 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
     A sampling function that returns samples and the number of function evaluations during sampling.
   """
   # Create predictor & corrector update functions
+  timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
   predictor_update_fn = functools.partial(shared_predictor_update_fn,
                                           sde=sde,
                                           predictor=predictor,
                                           probability_flow=probability_flow,
-                                          continuous=continuous)
+                                          continuous=continuous,
+                                          use_wrapper=use_wrapper, 
+                                          calibration=calibration,
+                                          score_mean=score_mean,
+                                          timesteps=timesteps)
   corrector_update_fn = functools.partial(shared_corrector_update_fn,
                                           sde=sde,
                                           corrector=corrector,
                                           continuous=continuous,
                                           snr=snr,
-                                          n_steps=n_steps)
+                                          n_steps=n_steps,
+                                          use_wrapper=use_wrapper, 
+                                          calibration=calibration,
+                                          score_mean=score_mean,
+                                          timesteps=timesteps)
 
   def pc_sampler(model):
     """ The PC sampler funciton.
@@ -398,7 +415,6 @@ def get_pc_sampler(sde, shape, predictor, corrector, inverse_scaler, snr,
     with torch.no_grad():
       # Initial sample
       x = sde.prior_sampling(shape).to(device)
-      timesteps = torch.linspace(sde.T, eps, sde.N, device=device)
 
       for i in range(sde.N):
         t = timesteps[i]
