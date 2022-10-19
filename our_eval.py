@@ -132,7 +132,7 @@ def main():
                                       eps=sampling_eps, device=config.device, 
                                       use_wrapper=True,
                                       calibration=False,
-                                      score_mean='mean_scores/28672_exp_ve_cifar10_ncsnpp_continuous_checkpoint_24.pth')
+                                      score_mean='mean_scores/49152_exp_ve_cifar10_ncsnpp_continuous_checkpoint_24.pth')
     elif args.method == "both":
         sampling_fn = sampling.get_pc_sampler(sde, shape, predictor, corrector,
                                       inverse_scaler, snr, n_steps=n_steps,
@@ -141,7 +141,7 @@ def main():
                                       eps=sampling_eps, device=config.device, 
                                       use_wrapper=True,
                                       calibration=True,
-                                      score_mean='mean_scores/28672_exp_ve_cifar10_ncsnpp_continuous_checkpoint_24.pth')
+                                      score_mean='mean_scores/49152_exp_ve_cifar10_ncsnpp_continuous_checkpoint_24.pth')
     else:
         assert 0
     get_fid(config, sampling_fn, score_model, eval_dir='assets/stats', job_name=args.method)
